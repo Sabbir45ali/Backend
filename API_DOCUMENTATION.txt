@@ -1,0 +1,111 @@
+=========================================
+🔥 BEAUTY PARLOUR UNIFIED API ENDPOINTS 🔥
+=========================================
+
+Base Server URL: http://localhost:5000
+
+--------------------------------------------------------------------------------
+1. 👑 ADMIN APIs (For Admin_site)
+--------------------------------------------------------------------------------
+
+[POST] /api/admin/login
+Headers: None
+Payload (JSON):
+{
+  "email": "admin@beauty.com",
+  "password": "AdminPassword123!"
+}
+
+*** FOR ALL FOLLOWING ADMIN APIs, pass the login token in Headers -> Authorization: Bearer <token> ***
+
+[GET] /api/admin/services
+Description: Get all services
+Payload: None
+
+[POST] /api/admin/services
+Description: Add a new service
+Payload (JSON):
+{ 
+  "name": "Bridal Makeup", 
+  "originalPrice": 6000, 
+  "offerPrice": 4999, 
+  "image": "example.jpg", 
+  "description": "Premium Full glam look", 
+  "rating": 5 
+}
+
+[PUT] /api/admin/services/<service_id_here>
+Description: Update a service
+Payload (JSON):
+{ 
+  "offerPrice": 4500 
+}
+
+[DELETE] /api/admin/services/<service_id_here>
+Description: Delete service
+Payload: None
+
+[GET] /api/admin/appointments
+Description: View all booked appointments from all clients
+Payload: None
+
+[PUT] /api/admin/appointments/<appointment_id_here>/status
+Description: Update an appointment status
+Payload (JSON):
+{ 
+  "status": "confirmed" 
+}
+
+[DELETE] /api/admin/appointments/<appointment_id_here>
+Description: Cancel/delete an appointment
+Payload: None
+
+[GET] /api/admin/clients
+Description: See all registered users
+Payload: None
+
+
+--------------------------------------------------------------------------------
+2. 💖 CLIENT APIs (For Clint_site)
+--------------------------------------------------------------------------------
+
+[POST] /api/client/signup
+Headers: None (Public)
+Payload (JSON):
+{ 
+  "email": "client@example.com", 
+  "password": "Password123!", 
+  "displayName": "New Client" 
+}
+
+[POST] /api/client/login
+Headers: None (Public)
+Payload (JSON):
+{ 
+  "email": "client@example.com", 
+  "password": "Password123!" 
+}
+
+[GET] /api/client/services
+Description: Get all services (Public route, anyone visiting the app can see!)
+Payload: None
+
+*** FOR ALL FOLLOWING CLIENT APIs, pass the CLIENT'S Login token in Headers -> Authorization: Bearer <token> ***
+
+[GET] /api/client/appointments
+Description: Fetches ONLY the logged-in client's personal bookings.
+Payload: None
+
+[POST] /api/client/appointments
+Description: Book a new appointment securely attached to your account UID.
+Payload (JSON):
+{ 
+  "serviceId": "paste_service_id_here", 
+  "serviceName": "Bridal Makeup", 
+  "date": "2026-05-15", 
+  "time": "14:00" 
+}
+
+[DELETE] /api/client/appointments/<appointment_id_here>
+Description: Cancel your own booking.
+Payload: None
