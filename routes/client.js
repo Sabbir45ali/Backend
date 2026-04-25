@@ -4,6 +4,9 @@ const { auth, db } = require("../config/firebase");
 const { verifyToken } = require("../middleware/auth");
 const { sendNotificationEmail } = require("../utils/emailService");
 
+const normalizePhone = (value) => String(value || "").replace(/[\s()-]/g, "").trim();
+const isValidPhone = (value) => /^\+?[0-9]{10,15}$/.test(normalizePhone(value));
+
 // === AUTH ===
 router.post("/signup", async (req, res, next) => {
   try {
@@ -34,14 +37,83 @@ router.post("/sync-user", verifyToken, async (req, res, next) => {
   try {
     const userRef = db.collection("users").doc(req.user.uid);
     const doc = await userRef.get();
+    const payload = {
+      email: req.user.email,
+      displayName: req.body.displayName || req.user.name || "",
+      phone: req.body.phone ? normalizePhone(req.body.phone) : "",
+      age: req.body.age || "",
+      gender: req.body.gender || "",
+      photoURL: req.body.photoURL || "",
+      updatedAt: new Date().toISOString(),
+    };
+
     if (!doc.exists) {
       await userRef.set({
-        email: req.user.email,
-        displayName: req.body.displayName || req.user.name || "",
+        ...payload,
         createdAt: new Date().toISOString(),
         loyaltyPoints: 0,
       });
+    } else {
+      await userRef.set(payload, { merge: true });
     }
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/profile", verifyToken, async (req, res, next) => {
+  try {
+    const userDoc = await db.collection("users").doc(req.user.uid).get();
+    if (!userDoc.exists) {
+      return res.json({
+        success: true,
+        data: {
+          email: req.user.email || "",
+          displayName: req.user.name || "",
+          phone: "",
+          age: "",
+          gender: "",
+          photoURL: "",
+        },
+      });
+    }
+    return res.json({ success: true, data: userDoc.data() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put("/profile", verifyToken, async (req, res, next) => {
+  try {
+    const phone = normalizePhone(req.body.phone);
+    if (!phone) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Phone number is required" });
+    }
+    if (!isValidPhone(phone)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid phone format" });
+    }
+
+    await db
+      .collection("users")
+      .doc(req.user.uid)
+      .set(
+        {
+          displayName: req.body.displayName || "",
+          email: req.body.email || req.user.email || "",
+          phone,
+          age: req.body.age || "",
+          gender: req.body.gender || "",
+          photoURL: req.body.photoURL || "",
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true },
+      );
+
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -164,19 +236,35 @@ router.post("/appointments", verifyToken, async (req, res, next) => {
   try {
     // Look up the user's display name from Firestore
     let userName = req.body.userName || "";
+    let userPhone = normalizePhone(req.body.userPhone);
     if (!userName) {
       const userDoc = await db.collection("users").doc(req.user.uid).get();
       if (userDoc.exists) {
         userName = userDoc.data().displayName || req.user.email || "Unknown";
+        userPhone = userPhone || normalizePhone(userDoc.data().phone);
       } else {
         userName = req.user.email || "Unknown";
       }
+    }
+
+    if (!userPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required before booking",
+      });
+    }
+    if (!isValidPhone(userPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid phone number format",
+      });
     }
 
     const newDoc = await db.collection("appointments").add({
       userId: req.user.uid,
       userName: userName,
       userEmail: req.body.userEmail || req.user.email,
+      userPhone,
       serviceId: req.body.serviceId,
       serviceName: req.body.serviceName,
       service: req.body.serviceName,
