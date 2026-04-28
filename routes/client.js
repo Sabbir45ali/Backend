@@ -4,7 +4,10 @@ const { auth, db } = require("../config/firebase");
 const { verifyToken } = require("../middleware/auth");
 const { sendNotificationEmail } = require("../utils/emailService");
 
-const normalizePhone = (value) => String(value || "").replace(/[\s()-]/g, "").trim();
+const normalizePhone = (value) =>
+  String(value || "")
+    .replace(/[\s()-]/g, "")
+    .trim();
 const isValidPhone = (value) => /^\+?[0-9]{10,15}$/.test(normalizePhone(value));
 
 // === AUTH ===
@@ -37,24 +40,35 @@ router.post("/sync-user", verifyToken, async (req, res, next) => {
   try {
     const userRef = db.collection("users").doc(req.user.uid);
     const doc = await userRef.get();
-    const payload = {
+
+    // Only include fields that are explicitly provided in the request
+    // This prevents wiping out existing data (like phone) when logging in with Google
+    const updates = {
       email: req.user.email,
-      displayName: req.body.displayName || req.user.name || "",
-      phone: req.body.phone ? normalizePhone(req.body.phone) : "",
-      age: req.body.age || "",
-      gender: req.body.gender || "",
-      photoURL: req.body.photoURL || "",
       updatedAt: new Date().toISOString(),
     };
 
+    if (req.body.displayName) updates.displayName = req.body.displayName;
+    if (req.body.phone) updates.phone = normalizePhone(req.body.phone);
+    if (req.body.age) updates.age = req.body.age;
+    if (req.body.gender) updates.gender = req.body.gender;
+    if (req.body.photoURL) updates.photoURL = req.body.photoURL;
+
     if (!doc.exists) {
+      // For new users, ensure we write default empty values for missing fields
       await userRef.set({
-        ...payload,
+        ...updates,
+        displayName: updates.displayName || req.user.name || "",
+        phone: updates.phone || "",
+        age: updates.age || "",
+        gender: updates.gender || "",
+        photoURL: updates.photoURL || "",
         createdAt: new Date().toISOString(),
         loyaltyPoints: 0,
       });
     } else {
-      await userRef.set(payload, { merge: true });
+      // For existing users, only update the fields that were provided
+      await userRef.set(updates, { merge: true });
     }
     res.json({ success: true });
   } catch (err) {
@@ -113,6 +127,31 @@ router.put("/profile", verifyToken, async (req, res, next) => {
         },
         { merge: true },
       );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/fcm-token", verifyToken, async (req, res, next) => {
+  try {
+    const { fcmToken } = req.body;
+    if (!fcmToken) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Token is required" });
+    }
+
+    const userRef = db.collection("users").doc(req.user.uid);
+    // Use arrayUnion to prevent duplicates
+    await userRef.set(
+      {
+        fcmTokens:
+          require("firebase-admin").firestore.FieldValue.arrayUnion(fcmToken),
+      },
+      { merge: true },
+    );
 
     res.json({ success: true });
   } catch (err) {
@@ -274,26 +313,73 @@ router.post("/appointments", verifyToken, async (req, res, next) => {
       createdAt: new Date().toISOString(),
     });
 
-    // Fire email asynchronously (dont block the response)
+    // Fire email to client asynchronously
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
         <h2 style="color: #FF1493; text-align: center;">Booking Request Received!</h2>
-        <p>Hi <b>${userName}</b>,</p>
-        <p>Thank you for choosing Ruksana's Beauty Parlour. We have received your booking request for <b>${req.body.serviceName}</b>.</p>
+        <p>Dear Valued Client,</p>
+        <p>Thank you for choosing Ruk's Glow House. We have received your booking request for <b>${req.body.serviceName}</b>.</p>
         <div style="background-color: #fce4ec; padding: 15px; border-radius: 8px; margin: 20px 0;">
           <p style="margin: 5px 0;"><b>Date:</b> ${req.body.date}</p>
           <p style="margin: 5px 0;"><b>Time:</b> ${req.body.time}</p>
           <p style="margin: 5px 0;"><b>Status:</b> Pending Admin Approval</p>
         </div>
         <p>Our team will review this and confirm your slot shortly. You will receive another email once it is approved.</p>
-        <p>Best Regards,<br><b>Ruksana's Beauty Parlour</b></p>
+        <p>Best Regards,<br><b>Ruk's Glow House</b></p>
       </div>
     `;
     sendNotificationEmail(
       req.body.userEmail || req.user.email,
-      "Booking Request Received - Ruksana's Parlour",
+      "Booking Request Received - Ruk's Glow House",
       emailHtml,
     );
+
+    // Fire email to admin asynchronously
+    const adminEmailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #4CAF50; text-align: center;">New Booking Received! 📅</h2>
+        <p>A new booking request has been submitted.</p>
+        <div style="background-color: #E8F5E9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <p style="margin: 5px 0;"><b>Client:</b> ${userName} (${userPhone})</p>
+          <p style="margin: 5px 0;"><b>Service:</b> ${req.body.serviceName}</p>
+          <p style="margin: 5px 0;"><b>Date:</b> ${req.body.date}</p>
+          <p style="margin: 5px 0;"><b>Time:</b> ${req.body.time}</p>
+        </div>
+        <p>Please log in to the admin panel to approve or reject this booking.</p>
+      </div>
+    `;
+    sendNotificationEmail(
+      "ruksglowhouse@gmail.com",
+      "New Booking Alert - Ruk's Glow House",
+      adminEmailHtml,
+    );
+
+    // Fire Push Notification to Admin asynchronously
+    (async () => {
+      try {
+        const adminSettings = await db
+          .collection("settings")
+          .doc("adminTokens")
+          .get();
+        if (
+          adminSettings.exists &&
+          adminSettings.data().fcmTokens?.length > 0
+        ) {
+          const message = {
+            notification: {
+              title: "New Booking Received!",
+              body: `${userName} booked ${req.body.serviceName} on ${req.body.date} at ${req.body.time}`,
+            },
+            tokens: adminSettings.data().fcmTokens,
+          };
+          await require("../config/firebase")
+            .admin.messaging()
+            .sendEachForMulticast(message);
+        }
+      } catch (pushErr) {
+        console.error("Failed to push notify admin:", pushErr);
+      }
+    })();
 
     res.status(201).json({ success: true, data: { id: newDoc.id } });
   } catch (err) {
