@@ -243,6 +243,7 @@ router.post("/appointments", async (req, res, next) => {
       userPhone: userPhone || "",
       serviceId: serviceId || "",
       serviceName,
+      servicePrice: req.body.servicePrice || "",
       service: serviceName,
       date,
       time,

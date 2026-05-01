@@ -306,6 +306,7 @@ router.post("/appointments", verifyToken, async (req, res, next) => {
       userPhone,
       serviceId: req.body.serviceId,
       serviceName: req.body.serviceName,
+      servicePrice: req.body.servicePrice || "",
       service: req.body.serviceName,
       date: req.body.date,
       time: req.body.time,
