@@ -310,6 +310,18 @@ router.put("/clients/:id/loyalty", async (req, res, next) => {
   }
 });
 
+router.put("/clients/:id/notes", async (req, res, next) => {
+  try {
+    await db
+      .collection("users")
+      .doc(req.params.id)
+      .update({ adminNotes: req.body.notes });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/loyalty-settings", async (req, res, next) => {
   try {
     const doc = await db.collection("settings").doc("loyalty").get();
@@ -534,6 +546,43 @@ router.post("/fcm-token", async (req, res, next) => {
       fcmTokens: require("firebase-admin").firestore.FieldValue.arrayUnion(fcmToken)
     }, { merge: true });
 
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// === LOOKBOOK ===
+router.get("/lookbook", async (req, res, next) => {
+  try {
+    const snapshot = await db.collection("lookbook").get();
+    res.json({
+      data: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/lookbook", async (req, res, next) => {
+  try {
+    const { title, desc, beforeImage, afterImage } = req.body;
+    const docRef = await db.collection("lookbook").add({
+      title,
+      desc,
+      beforeImage,
+      afterImage,
+      createdAt: new Date().toISOString(),
+    });
+    res.json({ success: true, data: { id: docRef.id } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/lookbook/:id", async (req, res, next) => {
+  try {
+    await db.collection("lookbook").doc(req.params.id).delete();
     res.json({ success: true });
   } catch (err) {
     next(err);

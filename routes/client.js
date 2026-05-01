@@ -188,6 +188,18 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
+// === LOOKBOOK ===
+router.get("/lookbook", async (req, res, next) => {
+  try {
+    const snapshot = await db.collection("lookbook").get();
+    res.json({
+      data: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // === SERVICES (Read-only for clients) ===
 router.get("/services", async (req, res, next) => {
   try {
