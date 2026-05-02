@@ -1,48 +1,60 @@
-import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  // Increase timeout to 10 seconds to fail gracefully if blocked
-  connectionTimeout: 10000,
-});
-
 /**
- * Send an automated email notification
+ * Send an automated email notification using Brevo REST API
  * @param {string} to - Recipient email address
  * @param {string} subject - Email subject line
  * @param {string} htmlBody - HTML content of the email
  */
 export const sendNotificationEmail = async (to, subject, htmlBody) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.EMAIL_USER; // Your verified email in Brevo
+
+    if (!brevoApiKey || !senderEmail) {
       console.warn(
-        "EMAIL_USER or EMAIL_PASS not set in .env. Skipping email to:",
+        "BREVO_API_KEY or EMAIL_USER not set in .env. Skipping email to:",
         to,
       );
       return false;
     }
 
-    const mailOptions = {
-      from: `"Ruksana's Parlour" <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html: htmlBody,
+    const payload = {
+      sender: {
+        name: "Ruk's Glow House",
+        email: senderEmail,
+      },
+      to: [
+        {
+          email: to,
+        },
+      ],
+      subject: subject,
+      htmlContent: htmlBody,
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log("Email sent successfully: %s", info.messageId);
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": brevoApiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Failed to send email via Brevo API:", errorData);
+      return false;
+    }
+
+    const responseData = await response.json();
+    console.log("Email sent successfully via Brevo:", responseData.messageId);
     return true;
   } catch (error) {
-    console.error("Error sending email via Nodemailer:", error);
+    console.error("Error sending email via Brevo:", error);
     return false;
   }
 };
